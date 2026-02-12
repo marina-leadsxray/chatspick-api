@@ -1,79 +1,36 @@
-import express from "express";
-import fetch from "node-fetch";
-import dotenv from "dotenv";
+const express = require("express");
+const cors = require("cors");
+const fetch = require("node-fetch");
 
-dotenv.config();
 const app = express();
+
+app.use(cors());
 app.use(express.json());
 
-const AIRTABLE_BASE = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_TOKEN = process.env.AIRTABLE_PAT;
-const TABLE = "Subscriptions";
-
-// 🔍 CHECK CREDIT (used before search)
-app.post("/check-credit", async (req, res) => {
+app.post("/chat", async (req, res) => {
   try {
-    const { email } = req.body;
-    if (!email) return res.json({ allowed: false });
-
-    const r = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${TABLE}?filterByFormula={email}='${email}'`,
-      {
-        headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-      }
-    );
-
-    const data = await r.json();
-    if (!data.records.length) return res.json({ allowed: false });
-
-    const rec = data.records[0];
-    const pulls = rec.fields.pulls_remaining || 0;
-
-    if (pulls <= 0) return res.json({ allowed: false });
-
-    res.json({ allowed: true });
-
-  } catch (e) {
-    console.log(e);
-    res.json({ allowed: false });
-  }
-});
-
-// ⬇️ DEDUCT CREDIT AFTER SEARCH
-app.post("/use-credit", async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.json({ success: false });
-
-    const r = await fetch(
-      `https://api.airtable.com/v0/${AIRTABLE_BASE}/${TABLE}?filterByFormula={email}='${email}'`,
-      {
-        headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-      }
-    );
-
-    const data = await r.json();
-    if (!data.records.length) return res.json({ success: false });
-
-    const rec = data.records[0];
-    const id = rec.id;
-    const pulls = (rec.fields.pulls_remaining || 0) - 1;
-
-    await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${TABLE}/${id}`, {
-      method: "PATCH",
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${AIRTABLE_TOKEN}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
       },
-      body: JSON.stringify({ fields: { pulls_remaining: pulls } })
+      body: JSON.stringify({
+        model: req.body.model || "claude-sonnet-4-20250514",
+        max_tokens: req.body.max_tokens || 75,
+        system: req.body.system || "",
+        messages: req.body.messages || []
+      })
     });
 
-    res.json({ success: true });
-
-  } catch (e) {
-    console.log(e);
-    res.json({ success: false });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Proxy error:", err);
+    res.status(500).json({ error: "Failed to reach Claude API" });
   }
 });
 
-app.listen(10000, () => console.log("Credit Gate running on port 10000"));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log("Proxy running on port " + PORT));
