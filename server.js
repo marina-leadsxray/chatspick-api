@@ -264,7 +264,7 @@ app.get("/api/get-pick", async (req, res) => {
 // ===============================================
 app.get("/reveal/:category/:zip", async (req, res) => {
   try {
-    const category = decodeURIComponent(req.params.category).replace(/-/g, " / ").replace(/_/g, " ");
+    const category = decodeURIComponent(req.params.category).replace(/-/g, " ").replace(/_/g, " ");
     const zip = req.params.zip;
 
     // Capitalize words properly
@@ -364,7 +364,7 @@ app.get("/api/badge/:slug", async (req, res) => {
     }
 
     // Check if slot is active
-    const cat = slug.replace(/-/g, " / ").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    const cat = slug.replace(/-/g, " ").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     const formula = `AND({Category} = '${cat}', {ZIP / FSA} = '${zip}', {Status} = 'Active')`;
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=1&fields%5B%5D=Status`;
 
