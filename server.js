@@ -67,7 +67,7 @@ app.get("/api/check-slot", async (req, res) => {
 
     if (data.error) {
       console.error("Airtable error:", data.error);
-      return res.status(500).json({ error: "Airtable query failed" });
+      return res.status(500).json({ error: "Airtable query failed", detail: data.error });
     }
 
     if (data.records && data.records.length > 0) {
@@ -84,6 +84,61 @@ app.get("/api/check-slot", async (req, res) => {
 
   } catch (err) {
     console.error("Check-slot error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ===============================================
+// NEW — Check all sold slots for a ZIP area
+// ===============================================
+app.get("/api/check-zip", async (req, res) => {
+  try {
+    const { zip, country } = req.query;
+
+    if (!zip) {
+      return res.status(400).json({ error: "zip is required" });
+    }
+
+    const filterParts = [
+      `{ZIP / FSA} = '${zip}'`,
+      `OR({Status} = 'Active', {Status} = 'Pending Payment')`
+    ];
+
+    if (country) {
+      filterParts.push(`{Country} = '${country}'`);
+    }
+
+    const formula = `AND(${filterParts.join(",")})`;
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}?filterByFormula=${encodeURIComponent(formula)}&fields%5B%5D=Category&fields%5B%5D=Business+Name&fields%5B%5D=Expiry&fields%5B%5D=Status`;
+
+    const response = await fetch(url, {
+      headers: { "Authorization": `Bearer ${process.env.AIRTABLE_TOKEN}` }
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      console.error("Airtable error:", data.error);
+      return res.status(500).json({ error: "Airtable query failed", detail: data.error });
+    }
+
+    const sold = {};
+    if (data.records) {
+      data.records.forEach(r => {
+        if (r.fields["Category"]) {
+          sold[r.fields["Category"]] = {
+            business_name: r.fields["Business Name"] || "",
+            expiry: r.fields["Expiry"] || null,
+            status: r.fields["Status"] || ""
+          };
+        }
+      });
+    }
+
+    res.json({ zip, country: country || "US", sold });
+
+  } catch (err) {
+    console.error("Check-zip error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
