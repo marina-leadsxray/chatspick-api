@@ -336,7 +336,7 @@ body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#fff;col
   ${siteUrl ? '<a class="cta-site" href="' + (siteUrl.startsWith("http") ? siteUrl : "https://" + siteUrl) + '" target="_blank">Visit Website →</a>' : ''}
   <p class="mention">Mention Chat's Pick for priority service</p>
   <div class="footer">
-    <a href="https://chatspick.com">Chat's Pick</a> — AI Decision Engine
+    <a href="https://chatspick.com">Chat's Pick</a>
   </div>
 </div>
 </body>
