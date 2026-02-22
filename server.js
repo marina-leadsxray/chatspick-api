@@ -381,7 +381,7 @@ ${isPreview ? '<div class="preview-bar">⚡ PREVIEW — This is how your Chat\'s
   </div>
   <h1 class="biz-name">${bizName}</h1>
   <div class="biz-cat">Chat's Pick — ${cat}</div>
-  <div class="territory">${city || zip}</div>
+  <div class="territory">${city && city.includes(",") ? "Serving " + city + " and surrounding areas" : city || zip}</div>
   ${starsHTML}
   ${bullets ? `
   <div class="why-section">
@@ -499,17 +499,25 @@ app.get("/reveal/:category/:zip", async (req, res) => {
     }
 
     const f = data.records[0].fields;
+    let revealText = f["Reveal Text"] || "";
+    let cityList = "";
+    if (revealText.includes("CITIES:")) {
+      const parts = revealText.split("CITIES:");
+      cityList = parts[1] ? parts[1].trim() : "";
+      revealText = parts[0].trim();
+    }
+
     res.send(buildRevealHTML({
       bizName: f["Business Name"] || "",
       cat: f["Category"] || catDisplay,
-      city: f["City"] || "",
+      city: cityList || f["City"] || "",
       zip: zip,
       phone: f["Phone Number"] || "",
       siteUrl: f["Site URL"] || "",
       address: f["Address"] || "",
       rating: f["Rating"] || "",
       reviews: f["Reviews"] || "",
-      revealText: f["Reveal Text"] || "",
+      revealText: revealText,
       isPreview: false
     }));
 
@@ -564,22 +572,80 @@ app.get("/best/:category/:zip", async (req, res) => {
 // ===============================================
 // PREVIEW — Reveal page (URL params, no Airtable)
 // Used by Claude during live demos
+// Calls Sonnet on the fly for bullets + city list
 // ===============================================
-app.get("/preview/reveal/:category/:zip", (req, res) => {
+app.get("/preview/reveal/:category/:zip", async (req, res) => {
   const category = decodeURIComponent(req.params.category).replace(/-/g, " ").replace(/_/g, " ");
   const catDisplay = category.replace(/\b\w/g, c => c.toUpperCase());
+  const zip = req.params.zip;
+  const bizName = req.query.name || "";
+  const city = req.query.city || "";
+  const phone = req.query.phone || "";
+  const siteUrl = req.query.url || "";
+  const address = req.query.address || "";
+  const rating = req.query.rating || "";
+  const reviews = req.query.reviews || "";
+  let revealText = req.query.reveal_text || "";
+
+  // If no reveal_text provided, generate on the fly via Sonnet
+  if (!revealText && bizName) {
+    try {
+      const sonnetResp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 400,
+          system: `Write content for a Chat's Pick reveal page. This is shown to consumers — like a trusted friend recommending this business.
+
+SECTION 1 — BULLET POINTS:
+Write 4-5 bullet points highlighting why this business stands out. Use the rating, review count, location, and any details you can infer. Sound confident and specific. One bullet per line. No markdown, no numbering, no dashes.
+
+SECTION 2 — TERRITORY:
+On a new line, write "CITIES:" followed by a comma-separated list of ALL major cities and communities in the ${zip} ZIP3 area (the first 3 digits of the ZIP code). Include 6-12 cities. These are the cities this business serves as Chat's Pick.
+
+Example output:
+Highest-rated dentist in the Henderson area with 247 verified Google reviews
+Serving families across the Las Vegas valley for over a decade
+Known for same-day emergency appointments and gentle care
+Locally owned — not a chain
+Consistently rated 4.8+ stars by real patients
+CITIES: Henderson, Las Vegas, North Las Vegas, Boulder City, Summerlin, Paradise, Spring Valley, Enterprise, Whitney, Anthem`,
+          messages: [{ role: "user", content: "Business: " + bizName + "\nCategory: " + catDisplay + "\nCity: " + city + "\nZIP3: " + zip + "\nAddress: " + address + "\nWebsite: " + siteUrl + "\nRating: " + rating + " stars\nReviews: " + reviews + " Google reviews" }]
+        })
+      });
+      const sonnetData = await sonnetResp.json();
+      if (sonnetData.content && sonnetData.content[0] && sonnetData.content[0].text) {
+        revealText = sonnetData.content[0].text.trim();
+      }
+    } catch (err) {
+      console.error("Sonnet preview error:", err);
+    }
+  }
+
+  // Extract city list from CITIES: line if present
+  let cityList = "";
+  if (revealText.includes("CITIES:")) {
+    const parts = revealText.split("CITIES:");
+    cityList = parts[1] ? parts[1].trim() : "";
+    revealText = parts[0].trim();
+  }
 
   res.send(buildRevealHTML({
-    bizName: req.query.name || "",
+    bizName: bizName,
     cat: catDisplay,
-    city: req.query.city || "",
-    zip: req.params.zip,
-    phone: req.query.phone || "",
-    siteUrl: req.query.url || "",
-    address: req.query.address || "",
-    rating: req.query.rating || "",
-    reviews: req.query.reviews || "",
-    revealText: req.query.reveal_text || "",
+    city: cityList || city,
+    zip: zip,
+    phone: phone,
+    siteUrl: siteUrl,
+    address: address,
+    rating: rating,
+    reviews: reviews,
+    revealText: revealText,
     isPreview: true
   }));
 });
