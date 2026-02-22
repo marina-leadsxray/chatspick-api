@@ -333,8 +333,8 @@ function buildRevealHTML(d) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Chat's Pick — Best ${cat}${city ? " in " + city : ""}</title>
-${isPreview ? '<meta name="robots" content="noindex, nofollow">' : ''}
+<title>Chat's Pick — ${cat}${city ? " in " + city : ""}</title>
+<meta name="robots" content="noindex, nofollow">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -396,7 +396,8 @@ ${isPreview ? '<div class="preview-bar">⚡ PREVIEW — This is how your Chat\'s
   </div>
   <p class="mention">Mention Chat's Pick for priority service</p>
   <div class="footer">
-    <a href="https://chatspick.com">Chat's Pick</a> · The AI Referral Engine
+    <a href="https://chatspick.com">Chat's Pick</a> · One provider per category per area
+    <br><span style="font-size:10px;color:#ddd;">Chat's Pick is a paid co-promotion.</span>
   </div>
 </div>
 </body>
@@ -422,7 +423,7 @@ function buildLandingHTML(d) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Best ${cat} in ${city || "ZIP " + zip} — Chat's Pick</title>
+<title>Chat's Pick ${cat} in ${city || "ZIP " + zip}</title>
 <meta name="description" content="Looking for the best ${cat.toLowerCase()} in ${city || "your area"}? Chat's Pick recommends one trusted ${cat.toLowerCase()} per area. See who made the cut.">
 ${isPreview ? '<meta name="robots" content="noindex, nofollow">' : ''}
 <style>
@@ -450,8 +451,8 @@ ${isPreview ? '.preview-bar{background:#ff9800;color:#fff;text-align:center;padd
 ${isPreview ? '<div class="preview-bar">⚡ PREVIEW — This is your SEO landing page</div>' : ''}
 <div class="hero">
   <img class="badge-img" src="/badges/${badgeSlug}.png" alt="Chat's Pick — ${cat}" onerror="this.style.display='none'">
-  <h1>Looking for the best<br>${cat.toLowerCase()} in ${city || "your area"}?</h1>
-  <p class="hero-sub">Chat's Pick is the AI referral engine that recommends one trusted ${cat.toLowerCase()} per area. No ads. No sponsored listings. Just the one we'd send our own family to.</p>
+  <h1>Looking for a<br>${cat.toLowerCase()} in ${city || "your area"}?</h1>
+  <p class="hero-sub">Chat's Pick recommends one trusted ${cat.toLowerCase()} per area. No ads. No sponsored listings. Just the one we'd send our own family to.</p>
   <ul class="hero-points">
     <li>One exclusive pick per category per area</li>
     <li>Verified ratings and real Google reviews</li>
@@ -464,7 +465,8 @@ ${isPreview ? '<div class="preview-bar">⚡ PREVIEW — This is your SEO landing
   <p class="trust">Trusted by businesses across 223 categories</p>
 </div>
 <div class="footer">
-  <a href="https://chatspick.com">Chat's Pick</a> · The AI Referral Engine
+  <a href="https://chatspick.com">Chat's Pick</a> · One provider per category per area
+  <br><span style="font-size:10px;color:#ddd;">Chat's Pick is a paid co-promotion.</span>
 </div>
 </body>
 </html>`;
@@ -602,6 +604,8 @@ app.get("/preview/reveal/:category/:zip", async (req, res) => {
           max_tokens: 400,
           system: `Write content for a Chat's Pick reveal page. This is shown to consumers — like a trusted friend recommending this business.
 
+IMPORTANT: Do NOT use the word "best" anywhere. Say "Chat's Pick for [category]" not "Best [category]". Use phrases like "top-rated", "highest-rated", "go-to", "trusted" instead.
+
 SECTION 1 — BULLET POINTS:
 Write 4-5 bullet points highlighting why this business stands out. Use the rating, review count, location, and any details you can infer. Sound confident and specific. One bullet per line. No markdown, no numbering, no dashes.
 
@@ -609,7 +613,7 @@ SECTION 2 — TERRITORY:
 On a new line, write "CITIES:" followed by a comma-separated list of ALL major cities and communities in the ${zip} ZIP3 area (the first 3 digits of the ZIP code). Include 6-12 cities. These are the cities this business serves as Chat's Pick.
 
 Example output:
-Highest-rated dentist in the Henderson area with 247 verified Google reviews
+Top-rated dentist in the Henderson area with 247 verified Google reviews
 Serving families across the Las Vegas valley for over a decade
 Known for same-day emergency appointments and gentle care
 Locally owned — not a chain
