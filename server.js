@@ -2,7 +2,78 @@ const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch");
 const path = require("path");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
+
+// Stripe webhook needs raw body — must come BEFORE express.json()
+app.post("/api/stripe-webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error("Webhook signature failed:", err.message);
+    return res.status(400).send("Webhook Error: " + err.message);
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const meta = session.metadata || {};
+
+    // Find the Pending Payment record in Airtable and flip to Active
+    if (meta.business_name && meta.category && meta.zip) {
+      try {
+        const formula = `AND({Business Name} = '${meta.business_name.replace(/'/g, "\\'")}', {Category} = '${meta.category.replace(/'/g, "\\'")}', {ZIP / FSA} = '${meta.zip}', {Status} = 'Pending Payment')`;
+        const searchUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=1`;
+
+        const searchResp = await fetch(searchUrl, {
+          headers: { "Authorization": `Bearer ${process.env.AIRTABLE_TOKEN}` }
+        });
+        const searchData = await searchResp.json();
+
+        if (searchData.records && searchData.records.length > 0) {
+          const recordId = searchData.records[0].id;
+          const now = new Date();
+          const expiry = new Date(now);
+          expiry.setFullYear(expiry.getFullYear() + 1);
+
+          const updateFields = {
+            "Status": "Active",
+            "Payment Date": now.toISOString().split("T")[0],
+            "Expiry": expiry.toISOString().split("T")[0],
+            "Stripe Customer ID": session.customer || "",
+            "Annual Price": session.amount_total ? (session.amount_total / 100) : 0
+          };
+
+          // Write email from Stripe checkout if not already set
+          if (session.customer_details && session.customer_details.email) {
+            updateFields["Email Address"] = session.customer_details.email;
+          }
+
+          const updateUrl = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}/${recordId}`;
+          await fetch(updateUrl, {
+            method: "PATCH",
+            headers: {
+              "Authorization": `Bearer ${process.env.AIRTABLE_TOKEN}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ fields: updateFields })
+          });
+
+          console.log(`✅ Activated: ${meta.business_name} / ${meta.category} / ${meta.zip}`);
+        } else {
+          console.error("Webhook: No matching Pending Payment record found for", meta);
+        }
+      } catch (err) {
+        console.error("Webhook Airtable update error:", err);
+      }
+    }
+  }
+
+  res.json({ received: true });
+});
+
 app.use(cors());
 app.use(express.json());
 
@@ -693,6 +764,91 @@ app.get("/preview/best/:category/:zip", (req, res) => {
     isPreview: true,
     queryString: queryString
   }));
+});
+
+// ===============================================
+// PRICING MAP — annual pricing by tier and country
+// Shown as monthly, charged annually (×12)
+// ===============================================
+const PRICING = {
+  US: { 1: { amount: 118800, currency: "usd" }, 2: { amount: 238800, currency: "usd" }, 3: { amount: 478800, currency: "usd" }, 4: { amount: 838800, currency: "usd" }, 5: { amount: 1558800, currency: "usd" } },
+  CA: { 1: { amount: 118800, currency: "usd" }, 2: { amount: 238800, currency: "usd" }, 3: { amount: 478800, currency: "usd" }, 4: { amount: 838800, currency: "usd" }, 5: { amount: 1558800, currency: "usd" } },
+  GB: { 1: { amount: 94800, currency: "gbp" }, 2: { amount: 190800, currency: "gbp" }, 3: { amount: 358800, currency: "gbp" }, 4: { amount: 658800, currency: "gbp" }, 5: { amount: 1198800, currency: "gbp" } },
+  AU: { 1: { amount: 106800, currency: "aud" }, 2: { amount: 214800, currency: "aud" }, 3: { amount: 418800, currency: "aud" }, 4: { amount: 718800, currency: "aud" }, 5: { amount: 1318800, currency: "aud" } },
+  NZ: { 1: { amount: 106800, currency: "aud" }, 2: { amount: 214800, currency: "aud" }, 3: { amount: 418800, currency: "aud" }, 4: { amount: 718800, currency: "aud" }, 5: { amount: 1318800, currency: "aud" } },
+  IE: { 1: { amount: 94800, currency: "gbp" }, 2: { amount: 190800, currency: "gbp" }, 3: { amount: 358800, currency: "gbp" }, 4: { amount: 658800, currency: "gbp" }, 5: { amount: 1198800, currency: "gbp" } },
+  AE: { 1: { amount: 478800, currency: "aed" }, 2: { amount: 898800, currency: "aed" }, 3: { amount: 1798800, currency: "aed" }, 4: { amount: 2998800, currency: "aed" }, 5: { amount: 5758800, currency: "aed" } },
+  SG: { 1: { amount: 154800, currency: "usd" }, 2: { amount: 298800, currency: "usd" }, 3: { amount: 598800, currency: "usd" }, 4: { amount: 1078800, currency: "usd" }, 5: { amount: 1918800, currency: "usd" } },
+  HK: { 1: { amount: 154800, currency: "usd" }, 2: { amount: 298800, currency: "usd" }, 3: { amount: 598800, currency: "usd" }, 4: { amount: 1078800, currency: "usd" }, 5: { amount: 1918800, currency: "usd" } },
+  ZA: { 1: { amount: 598800, currency: "zar" }, 2: { amount: 1198800, currency: "zar" }, 3: { amount: 2398800, currency: "zar" }, 4: { amount: 4198800, currency: "zar" }, 5: { amount: 7198800, currency: "zar" } }
+};
+
+const TIER_NAMES = {
+  1: "Tier 1 — 2 Domains (chatspick.com + chatspick.ai)",
+  2: "Tier 2 — 3 Domains (+ chatschoice.com)",
+  3: "Tier 3 — 4 Domains (+ chatsbest.com)",
+  4: "Tier 4 — 5 Domains (+ chatsfavorite.com)",
+  5: "Tier 5 — 6 Domains (+ aispick.com)"
+};
+
+// ===============================================
+// Stripe Checkout — create session with metadata
+// ===============================================
+app.post("/api/create-checkout", async (req, res) => {
+  try {
+    const { business_name, category, zip, country, city, phone, site_url, address, rating, reviews, reveal_text, specials, tier, agent, onboarded_via, commission_rate } = req.body;
+
+    if (!business_name || !category || !zip || !tier) {
+      return res.status(400).json({ error: "business_name, category, zip, and tier are required" });
+    }
+
+    const countryCode = (country || "US").toUpperCase();
+    const tierNum = parseInt(tier);
+    const pricing = (PRICING[countryCode] || PRICING["US"])[tierNum] || PRICING["US"][1];
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      allow_promotion_codes: true,
+      line_items: [{
+        price_data: {
+          currency: pricing.currency,
+          unit_amount: pricing.amount,
+          product_data: {
+            name: `Chat's Pick — ${category}`,
+            description: `${TIER_NAMES[tierNum] || "Tier " + tierNum} · Annual Subscription · ${city || zip}`
+          }
+        },
+        quantity: 1
+      }],
+      metadata: {
+        business_name,
+        category,
+        zip,
+        country: countryCode,
+        city: city || "",
+        phone: phone || "",
+        site_url: site_url || "",
+        address: address || "",
+        rating: rating || "",
+        reviews: reviews || "",
+        reveal_text: (reveal_text || "").substring(0, 500),
+        specials: specials || "",
+        tier: String(tierNum),
+        agent: agent || "",
+        onboarded_via: onboarded_via || "",
+        commission_rate: commission_rate || ""
+      },
+      success_url: "https://chatspick.com?checkout=success&biz=" + encodeURIComponent(business_name),
+      cancel_url: "https://chatspick.com?checkout=cancel"
+    });
+
+    res.json({ url: session.url, session_id: session.id });
+
+  } catch (err) {
+    console.error("Create checkout error:", err);
+    res.status(500).json({ error: "Failed to create checkout session", detail: err.message });
+  }
 });
 
 // ===============================================
