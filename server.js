@@ -2,11 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch");
 const path = require("path");
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
 // Stripe webhook needs raw body — must come BEFORE express.json()
 app.post("/api/stripe-webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
   const sig = req.headers["stripe-signature"];
   let event;
 
@@ -46,7 +46,6 @@ app.post("/api/stripe-webhook", express.raw({ type: "application/json" }), async
             "Annual Price": session.amount_total ? (session.amount_total / 100) : 0
           };
 
-          // Write email from Stripe checkout if not already set
           if (session.customer_details && session.customer_details.email) {
             updateFields["Email Address"] = session.customer_details.email;
           }
@@ -351,7 +350,6 @@ app.get("/api/get-pick", async (req, res) => {
 
 // ===============================================
 // SHARED — Reveal page HTML template
-// Used by both production and preview routes
 // ===============================================
 function buildRevealHTML(d) {
   const bizName = d.bizName || "";
@@ -368,14 +366,12 @@ function buildRevealHTML(d) {
   const badgeSlug = cat.toLowerCase().replace(/ \/ /g, "-").replace(/ /g, "-");
   const isPreview = d.isPreview || false;
 
-  // Build bullet points from reveal text (newline separated)
   const bullets = revealText
     ? revealText.split("\n").filter(l => l.trim()).map(l =>
         `<li>${l.trim().replace(/^[-•]\s*/, '')}</li>`
       ).join("")
     : "";
 
-  // Rating stars display
   const ratingNum = parseFloat(rating) || 0;
   const fullStars = Math.floor(ratingNum);
   const halfStar = (ratingNum - fullStars) >= 0.3 ? 1 : 0;
@@ -387,7 +383,6 @@ function buildRevealHTML(d) {
       </div>`
     : "";
 
-  // Google Maps embed
   const mapQuery = encodeURIComponent(bizName + " " + address);
   const mapEmbed = address
     ? `<div class="map-wrap">
@@ -395,7 +390,6 @@ function buildRevealHTML(d) {
       </div>`
     : "";
 
-  // NAP block
   const napParts = [];
   if (address) napParts.push(`<div class="nap-line">📍 ${address}</div>`);
   if (phone) napParts.push(`<div class="nap-line">📱 <a href="tel:${phone.replace(/[^0-9+]/g, '')}">${phone}</a></div>`);
@@ -406,7 +400,6 @@ function buildRevealHTML(d) {
   }
   const napHTML = napParts.length ? `<div class="nap">${napParts.join("")}</div>` : "";
 
-  // Specials block
   const specialsHTML = specials
     ? `<div class="specials-box">
         <div class="specials-title">🎁 Special Offer</div>
@@ -460,7 +453,6 @@ ${isPreview ? '.preview-bar{background:#ff9800;color:#fff;text-align:center;padd
 .cta-phone:hover{background:#333;}
 .cta-site{display:inline-block;font-size:15px;color:#0d0d0d;font-weight:600;text-decoration:none;margin-top:14px;}
 .cta-site:hover{text-decoration:underline;}
-.mention{font-size:14px;color:#999;text-align:center;margin-top:28px;font-style:italic;}
 .footer{text-align:center;font-size:12px;color:#ccc;margin-top:40px;padding-top:20px;border-top:1px solid #eee;}
 .footer a{color:#999;text-decoration:none;font-weight:600;}
 </style>
@@ -498,7 +490,6 @@ ${isPreview ? '<div class="preview-bar">⚡ PREVIEW — This is how your Chat\'s
 
 // ===============================================
 // SHARED — Landing page HTML template
-// Used by both production and preview routes
 // ===============================================
 function buildLandingHTML(d) {
   const cat = d.cat || "";
@@ -565,7 +556,7 @@ ${isPreview ? '<div class="preview-bar">⚡ PREVIEW — This is your SEO landing
 }
 
 // ===============================================
-// PRODUCTION — Reveal page (Airtable lookup, Active only)
+// PRODUCTION — Reveal page
 // ===============================================
 app.get("/reveal/:category/:zip", async (req, res) => {
   try {
@@ -623,7 +614,7 @@ app.get("/reveal/:category/:zip", async (req, res) => {
 });
 
 // ===============================================
-// PRODUCTION — Landing page (SEO, Airtable check)
+// PRODUCTION — Landing page (SEO)
 // ===============================================
 app.get("/best/:category/:zip", async (req, res) => {
   try {
@@ -664,8 +655,6 @@ app.get("/best/:category/:zip", async (req, res) => {
 
 // ===============================================
 // PREVIEW — Reveal page (URL params, no Airtable)
-// Used by Claude during live demos
-// Calls Sonnet on the fly for bullets + city list
 // ===============================================
 app.get("/preview/reveal/:category/:zip", async (req, res) => {
   const category = decodeURIComponent(req.params.category).replace(/-/g, " ").replace(/_/g, " ");
@@ -680,7 +669,6 @@ app.get("/preview/reveal/:category/:zip", async (req, res) => {
   const reviews = req.query.reviews || "";
   let revealText = req.query.reveal_text || "";
 
-  // If no reveal_text provided, generate on the fly via Sonnet
   if (!revealText && bizName) {
     try {
       const sonnetResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -722,7 +710,6 @@ CITIES: Henderson, Las Vegas, North Las Vegas, Boulder City, Summerlin, Paradise
     }
   }
 
-  // Extract city list from CITIES: line if present
   let cityList = "";
   if (revealText.includes("CITIES:")) {
     const parts = revealText.split("CITIES:");
@@ -748,13 +735,10 @@ CITIES: Henderson, Las Vegas, North Las Vegas, Boulder City, Summerlin, Paradise
 
 // ===============================================
 // PREVIEW — Landing page (URL params, no Airtable)
-// Used by Claude during live demos
 // ===============================================
 app.get("/preview/best/:category/:zip", (req, res) => {
   const category = decodeURIComponent(req.params.category).replace(/-/g, " ").replace(/_/g, " ");
   const catDisplay = category.replace(/\b\w/g, c => c.toUpperCase());
-
-  // Pass query string through so preview landing links to preview reveal
   const queryString = new URLSearchParams(req.query).toString();
 
   res.send(buildLandingHTML({
@@ -767,8 +751,7 @@ app.get("/preview/best/:category/:zip", (req, res) => {
 });
 
 // ===============================================
-// PRICING MAP — annual pricing by tier and country
-// Shown as monthly, charged annually (×12)
+// PRICING MAP
 // ===============================================
 const PRICING = {
   US: { 1: { amount: 118800, currency: "usd" }, 2: { amount: 238800, currency: "usd" }, 3: { amount: 478800, currency: "usd" }, 4: { amount: 838800, currency: "usd" }, 5: { amount: 1558800, currency: "usd" } },
@@ -792,9 +775,10 @@ const TIER_NAMES = {
 };
 
 // ===============================================
-// Stripe Checkout — create session with metadata
+// Stripe Checkout — create session
 // ===============================================
 app.post("/api/create-checkout", async (req, res) => {
+  const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
   try {
     const { business_name, category, zip, country, city, phone, site_url, address, rating, reviews, reveal_text, specials, tier, agent, onboarded_via, commission_rate } = req.body;
 
@@ -860,13 +844,11 @@ app.get("/api/badge/:slug", async (req, res) => {
     const { zip } = req.query;
 
     if (!zip) {
-      // No ZIP = just serve the badge (for generic use)
       return res.sendFile(path.join(__dirname, 'public', 'badges', slug + '.png'), (err) => {
         if (err) res.status(404).send("");
       });
     }
 
-    // Check if slot is active
     const cat = slug.replace(/-/g, " ").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     const formula = `AND({Category} = '${cat}', {ZIP / FSA} = '${zip}', {Status} = 'Active')`;
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=1&fields%5B%5D=Status`;
@@ -882,7 +864,6 @@ app.get("/api/badge/:slug", async (req, res) => {
         if (err) res.status(404).send("");
       });
     } else {
-      // Not active — return transparent 1x1 pixel (badge disappears)
       const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
       res.set("Content-Type", "image/png");
       res.set("Cache-Control", "no-cache, no-store");
