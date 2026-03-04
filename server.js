@@ -85,7 +85,10 @@ app.get("/api/check-slot", async (req, res) => {
         available: false,
         business_name: fields["Business Name"] || "",
         status: fields["Status"] || "",
-        expiry: fields["Expiry"] || null
+        expiry: fields["Expiry"] || null,
+        phone: fields["Phone Number"] || "",
+        site_url: fields["Site URL"] || "",
+        specials: fields["Specials"] || ""
       });
     } else {
       res.json({ available: true });
@@ -157,7 +160,7 @@ app.get("/api/check-zip", async (req, res) => {
 // ===============================================
 app.post("/api/onboard", async (req, res) => {
   try {
-    const { business_name, category, zip, country, city, phone, site_url, email, address, rating, reviews, agent, onboarded_via, commission_rate, subscription_tier, annual_price, reveal_text, notes } = req.body;
+    const { business_name, category, zip, country, city, phone, site_url, email, address, rating, reviews, agent, onboarded_via, commission_rate, subscription_tier, annual_price, reveal_text, specials, tier, notes } = req.body;
 
     if (!business_name || !category || !zip) {
       return res.status(400).json({ error: "business_name, category, and zip are required" });
@@ -182,8 +185,10 @@ app.post("/api/onboard", async (req, res) => {
     if (onboarded_via) fields["Onboarded Via"] = onboarded_via;
     if (commission_rate) fields["Commission Rate"] = commission_rate;
     if (subscription_tier) fields["Subscription Tier"] = subscription_tier;
+    if (tier) fields["Subscription Tier"] = tier;
     if (annual_price) fields["Annual Price"] = annual_price;
     if (reveal_text) fields["Reveal Text"] = reveal_text;
+    if (specials) fields["Specials"] = specials;
     if (notes) fields["Notes & Comments"] = notes;
 
     const url = `https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`;
@@ -260,6 +265,7 @@ app.get("/api/get-pick", async (req, res) => {
         rating: f["Rating"] || "",
         reviews: f["Reviews"] || "",
         reveal_text: f["Reveal Text"] || "",
+        specials: f["Specials"] || "",
         zip: f["ZIP / FSA"] || ""
       });
     } else {
@@ -287,6 +293,7 @@ function buildRevealHTML(d) {
   const rating = d.rating || "";
   const reviews = d.reviews || "";
   const revealText = d.revealText || "";
+  const specials = d.specials || "";
   const badgeSlug = cat.toLowerCase().replace(/ \/ /g, "-").replace(/ /g, "-");
   const isPreview = d.isPreview || false;
 
@@ -328,6 +335,17 @@ function buildRevealHTML(d) {
   }
   const napHTML = napParts.length ? `<div class="nap">${napParts.join("")}</div>` : "";
 
+  // Specials block
+  const specialsHTML = specials
+    ? `<div class="specials-box">
+        <div class="specials-title">🎁 Special Offer</div>
+        <div class="specials-text">${specials}</div>
+      </div>`
+    : `<div class="specials-box">
+        <div class="specials-title">🎁 Special Offer</div>
+        <div class="specials-text">Mention Chat's Pick when you call for priority service.</div>
+      </div>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -361,6 +379,9 @@ ${isPreview ? '.preview-bar{background:#ff9800;color:#fff;text-align:center;padd
 .nap-line{font-size:15px;color:#333;padding:6px 0;line-height:1.5;}
 .nap-line a{color:#1565c0;text-decoration:none;font-weight:600;}
 .nap-line a:hover{text-decoration:underline;}
+.specials-box{background:#fffde7;border:1px solid #ffe082;border-radius:16px;padding:20px 24px;margin:20px 0;text-align:center;}
+.specials-title{font-size:16px;font-weight:800;color:#f57f17;margin-bottom:8px;}
+.specials-text{font-size:15px;color:#333;line-height:1.5;}
 .map-wrap{margin:20px 0;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;}
 .map-wrap iframe{width:100%;height:280px;border:0;}
 .cta-wrap{text-align:center;margin:28px 0 12px;}
@@ -388,13 +409,13 @@ ${isPreview ? '<div class="preview-bar">⚡ PREVIEW — This is how your Chat\'s
     <div class="why-title">Why ${bizName} is Chat's Pick</div>
     <ul class="why-list">${bullets}</ul>
   </div>` : ''}
+  ${specialsHTML}
   ${napHTML}
   ${mapEmbed}
   <div class="cta-wrap">
     ${phone ? `<a class="cta-phone" href="tel:${phone.replace(/[^0-9+]/g, '')}">Call ${phone}</a><br>` : ''}
     ${siteUrl ? `<a class="cta-site" href="${siteUrl.startsWith("http") ? siteUrl : "https://" + siteUrl}" target="_blank">Visit Website →</a>` : ''}
   </div>
-  <p class="mention">Mention Chat's Pick for priority service</p>
   <div class="footer">
     <a href="https://chatspick.com">Chat's Pick</a> · One provider per category per area
     <br><span style="font-size:10px;color:#ddd;">Chat's Pick is a paid co-promotion.</span>
@@ -520,6 +541,7 @@ app.get("/reveal/:category/:zip", async (req, res) => {
       rating: f["Rating"] || "",
       reviews: f["Reviews"] || "",
       revealText: revealText,
+      specials: f["Specials"] || "",
       isPreview: false
     }));
 
@@ -538,8 +560,6 @@ app.get("/best/:category/:zip", async (req, res) => {
     const zip = req.params.zip;
     const catDisplay = category.replace(/\b\w/g, c => c.toUpperCase());
 
-    // Check if there's an active pick — if not, still show the page (SEO)
-    // but change the CTA
     const filterParts = [
       `{Category} = '${catDisplay}'`,
       `{ZIP / FSA} = '${zip}'`,
@@ -650,6 +670,7 @@ CITIES: Henderson, Las Vegas, North Las Vegas, Boulder City, Summerlin, Paradise
     rating: rating,
     reviews: reviews,
     revealText: revealText,
+    specials: req.query.specials || "",
     isPreview: true
   }));
 });
